@@ -5,78 +5,63 @@ from langchain_core.output_parsers import JsonOutputParser
 from src.state import MagazineState
 from src.config import config
 
-# 🚀 Vision 데이터 시뮬레이터 (Vision 개발 전까지 사용)
-def simulate_vision_data(user_script: dict) -> dict:
-    llm = config.get_llm()
-    parser = JsonOutputParser()
-    
-    simulation_prompt = ChatPromptTemplate.from_template(
-        """
-        You are a 'Virtual Vision Simulator'.
-        Infer the likely visual elements based on the article content.
-
-        [Article Context]
-        - Title: {title}
-        - Body: {body_snippet}...
-
-        Return JSON:
-        {{
-            "main_item": "String",
-            "img_mood": "String",
-            "colors": ["#Hex1", "#Hex2", "#Hex3"],
-            "safe_zone": "String (one of: top, bottom, left, right, center)",
-            "shot_type": "String"
-        }}
-        """
-    )
-    
-    body_text = user_script.get("body", "")[:500]
-    chain = simulation_prompt | llm | parser
-    
-    try:
-        print(f"🔮 Vision 데이터 시뮬레이션 중... (주제: {user_script.get('title')})")
-        return chain.invoke({
-            "title": user_script.get("title", "No Title"),
-            "body_snippet": body_text
-        })
-    except Exception as e:
-        print(f"Simulator Error: {e}")
-        return {
-            "main_item": "Unknown", "img_mood": "Neutral", 
-            "colors": ["#000000", "#FFFFFF", "#808080"], 
-            "safe_zone": "center", "shot_type": "Product"
-        }
-
-# 🚀 Planner 메인 함수 (이게 꼭 있어야 합니다!)
 def run_planner(state: MagazineState) -> dict:
     print("--- [Planner] 매거진 컨셉 기획 중... ---")
     
     user_script = state["user_script"]
+    vision_result = state.get("vision_result")
     
-    if state.get("vision_result"):
-        vision_result = state["vision_result"]
-        print("✅ 실제 Vision 데이터를 사용합니다.")
-    else:
-        vision_result = simulate_vision_data(user_script)
-        
+    # 1. Vision 데이터 검증 및 기본값 설정
+    if not vision_result:
+        print("❌ [Critical] Vision 데이터 누락. 기본값으로 진행합니다.")
+        vision_result = {
+            "layout_strategy": {"recommendation": "Overlay"}, # 기본은 덮어쓰기
+            "img_mood": "Modern",
+            "safe_zone": "center"
+        }
+    
+    # Vision이 제안한 전략 (Overlay vs Separated) 가져오기
+    strategy = vision_result.get("layout_strategy", {}).get("recommendation", "Overlay")
+    print(f"✅ Vision 제안 전략: {strategy}")
+
     llm = config.get_llm()
     parser = JsonOutputParser()
 
+    # 2. 기획 프롬프트 (메뉴판 제공)
     prompt = ChatPromptTemplate.from_template(
         """
-        You are the Editor-in-Chief. Determine the Concept.
-        
+        You are the Editor-in-Chief of a high-end Fashion Magazine.
+        Decide the specific 'Layout Type' based on the Vision Strategy and Image Mood.
+
         [INPUTS]
+        - Vision Strategy: {strategy} (If 'Overlay', place text ON image. If 'Separated', place text BESIDE image.)
+        - Image Mood: {img_mood}
         - Title: {title}
-        - Mood: {img_mood}
-        - Item: {main_item}
+        - Safe Zone: {safe_zone}
+
+        [LAYOUT MENU - Choose ONE based on Strategy]
+        
+        <CASE A: Strategy is 'Overlay'>
+        1. "TYPE_FASHION_COVER": Classic magazine cover. Big bold title at the top or center. Elegant and impactful.
+        2. "TYPE_STREET_VIBE": Hip, trendy, and free-spirited. Text can be scattered or in corners. Good for street snaps.
+
+        <CASE B: Strategy is 'Separated'>
+        3. "TYPE_EDITORIAL_SPLIT": Standard article layout. Image on one side, text column on the other. Professional and readable.
+        4. "TYPE_LUXURY_PRODUCT": Minimalist layout for products (watches, bags). Clean background, small elegant text.
+
+        [TASK]
+        1. Analyze the inputs and select the best Type from the menu above.
+        2. If 'Separated', choose a background color that matches the image mood.
 
         Return JSON:
         {{
-            "selected_type": "TYPE_B_...",
-            "concept_rationale": "Reason...",
-            "layout_guide": {{ "text_position": "{safe_zone}", "font_theme": "String" }},
-            "editor_guide": {{ "tone": "String", "emphasis": "String" }}
+            "selected_type": "String (One of the types above)",
+            "concept_rationale": "Why you chose this type...",
+            "layout_guide": {{ 
+                "text_position": "{safe_zone}", 
+                "font_theme": "Serif (Luxury) or Sans-serif (Modern)",
+                "background_color": "#HexCode (Only for Separated types, otherwise null)"
+            }}
         }}
         """
     )
@@ -87,18 +72,20 @@ def run_planner(state: MagazineState) -> dict:
         plan = chain.invoke({
             "title": user_script.get("title"),
             "img_mood": vision_result.get("img_mood"),
-            "main_item": vision_result.get("main_item"),
-            "safe_zone": vision_result.get("safe_zone", "center")
+            "strategy": strategy,
+            "safe_zone": vision_result.get("safe_zone")
         })
         
-        print(f"🧠 기획 확정: {plan.get('selected_type')}")
+        print(f"🧠 기획 확정: {plan.get('selected_type')} (전략: {strategy})")
         
         return {
             "plan": plan,
             "vision_result": vision_result,
-            "logs": [f"Planner: {plan.get('selected_type')} 컨셉 확정"]
+            "logs": [f"Planner: {plan.get('selected_type')} 선정"]
         }
 
     except Exception as e:
         print(f"❌ Planner Error: {e}")
-        return {"plan": {"selected_type": "TYPE_B_1"}, "logs": ["Error"]}
+        # 에러 시 안전한 기본값 반환
+        fallback_type = "TYPE_EDITORIAL_SPLIT" if strategy == "Separated" else "TYPE_FASHION_COVER"
+        return {"plan": {"selected_type": fallback_type}, "logs": ["Error"]}
