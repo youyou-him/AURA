@@ -62,6 +62,7 @@ def run_editor(state: MagazineState) -> dict:
         !!! CRITICAL RULE: ENGLISH OUTPUT ONLY !!!
         - The final output must be in **ENGLISH**.
         - Do NOT invent new fictional stories. Keep the facts intact.
+        - Do not add any new entities, places, dates, or numbers not present in the source.
         - ONLY change the 'Tone', 'Style', and 'Vocabulary' to match the [Target Tone].
         
         [Input Data]
