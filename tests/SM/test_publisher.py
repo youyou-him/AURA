@@ -86,12 +86,31 @@ def run_universal_publisher_test():
 
     images_dict = {"사진4-1.png": real_base64}
 
+    # [신규 추가] [3.5단계: Human-in-the-Loop (1차 검수)]
+    # 실제 HTML 조립 전, 사용자가 데이터를 최종 확인하고 수정할 수 있는 단계입니다.
+    print("\n" + "="*50)
+    print("🔍 [검수 단계] 표지 문구를 확인하세요.")
+    # 수정 전: magazine_state['content']['title']
+    # 수정 후: 첫 번째 블록(hero_cover)의 headline을 가져옵니다.
+    current_headline = magazine_state['content']['blocks'][0]['headline']
+    print(f"현재 표지 문구: {current_headline}")
+
+    user_feedback = input("👉 표지 문구를 수정하시겠습니까? (엔터: 유지 / 내용 입력: 수정): ").strip()
+
+    if user_feedback:
+        # 실제로 화면에 그려지는 headline 값을 수정합니다.
+        magazine_state['content']['blocks'][0]['headline'] = user_feedback
+        print(f"✅ 표지 문구가 '{user_feedback}'(으)로 수정되었습니다.")
+    else:
+        print("ℹ️ 기존 문구를 유지합니다.")
+    print("="*50 + "\n")
+
     # [4단계: Jinja2 렌더링 (조립)]
     try:
         env = Environment(loader=FileSystemLoader(template_dir))
         template = env.get_template('magazine_layout.html')
         
-        # 데이터 주입
+        # [HITL 단계에서 수정된 데이터가 포함된 magazine_state가 전달됩니다]
         html_output = template.render(data=magazine_state, images=images_dict)
         
         # [5단계: 결과물 저장]

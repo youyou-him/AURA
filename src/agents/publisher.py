@@ -1,52 +1,104 @@
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from src.state import MagazineState
-from src.config import config
+# /home/sauser/final/Final-Project/src/agents/publisher.py
+import os
+import base64
+import io
+from PIL import Image
+from jinja2 import Environment, FileSystemLoader
 
-def run_publisher(state: MagazineState) -> dict:
-    print("--- [6] Publisher: HTML/CSS 코딩 중... ---")
-    llm = config.get_llm()
-    
-    # 디자인 계획을 문자열로 변환
-    design_plan = str(state.get("design_plan", {}))
-    
-    prompt = ChatPromptTemplate.from_template(
+class PublisherAgent:
+    def __init__(self, template_path="../../templates"):
         """
-        You are a World-Class Frontend Developer.
-        Create a single-file HTML using Tailwind CSS based on the design plan and manuscript.
-        
-        [Design Plan]: {design_plan}
-        [Manuscript]: {manuscript}
-        
-        CRITICAL INSTRUCTIONS:
-        1. Use Tailwind CSS via CDN (<script src="https://cdn.tailwindcss.com"></script>).
-        2. Make it responsive and beautiful (Magazine quality).
-        3. Use the 'manuscript' content fully.
-        4. **IMPORTANT**: For the main image, use exactly this source: src="{{IMAGE_PLACEHOLDER}}"
-           (Do NOT put real base64 code here, just the placeholder text).
-        5. Return ONLY the raw HTML code. Do not use Markdown backticks (```html).
+        Publisher 에이전트 초기화
+        :param template_path: Jinja2 템플릿 파일이 위치한 경로
         """
-    )
-    
-    chain = prompt | llm | StrOutputParser()
-    html_code = chain.invoke({
-        "design_plan": design_plan,
-        "manuscript": state["manuscript"]
-    })
-    
-    # 🧹 마크다운 백틱 제거 (가끔 LLM이 습관적으로 붙임)
-    html_code = html_code.replace("```html", "").replace("```", "").strip()
-    
-    # 💉 [핵심 기술] 메모리에 있는 Base64 이미지를 HTML에 주입!
-    if state.get("image_data"):
-        image_src = f"data:image/jpeg;base64,{state['image_data']}"
-        html_code = html_code.replace("{{IMAGE_PLACEHOLDER}}", image_src)
-        # 혹시 모를 URL 인코딩 문자 처리
-        html_code = html_code.replace("%7B%7BIMAGE_PLACEHOLDER%7D%7D", image_src)
-    
-    print("💻 HTML 생성 완료 (이미지 주입됨)")
+        self.current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.template_dir = os.path.normpath(os.path.join(self.current_dir, template_path))
+        
+        # Jinja2 환경 설정
+        self.env = Environment(loader=FileSystemLoader(self.template_dir))
+        self.template_name = 'magazine_layout.html'
 
-    return {
-        "html_code": html_code,
-        "logs": ["Publisher: HTML/CSS 코딩 및 이미지 병합 완료"]
-    }
+    def _optimize_image(self, image_data, max_width=1024):
+        """
+        [내부 메서드] 이미지 리사이징 및 압축 (과부하 방지)
+        - image_data: Base64 문자열 또는 이미지 파일 경로
+        """
+        try:
+            # 입력이 파일 경로인 경우와 Base64인 경우를 모두 처리
+            if os.path.exists(image_data):
+                img = Image.open(image_data)
+            else:
+                img_bytes = base64.b64decode(image_data)
+                img = Image.open(io.BytesIO(img_bytes))
+
+            if img.width > max_width:
+                ratio = max_width / float(img.width)
+                new_height = int(float(img.height) * ratio)
+                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+            
+            img = img.convert("RGB")
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=75)
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+        except Exception as e:
+            print(f"⚠️ 이미지 최적화 실패: {e}")
+            return image_data # 실패 시 원본 반환
+
+    def _human_in_the_loop(self, state):
+        """
+        [내부 메서드] 사용자 검수 단계 (HITL)
+        """
+        print("\n" + "="*50)
+        print("🔍 [Publisher HITL] 최종 조립 전 검수를 시작합니다.")
+        
+        # 첫 번째 블록의 헤드라인을 검수 대상으로 지정
+        if 'blocks' in state['content'] and len(state['content']['blocks']) > 0:
+            current_headline = state['content']['blocks'][0].get('headline', 'N/A')
+            print(f"현재 표지 문구: {current_headline}")
+            
+            user_input = input("👉 수정할 문구를 입력하세요 (엔터 시 유지): ").strip()
+            if user_input:
+                state['content']['blocks'][0]['headline'] = user_input
+                print(f"✅ 문구가 '{user_input}'(으)로 업데이트되었습니다.")
+        
+        print("="*50 + "\n")
+        return state
+
+    def run(self, state, enable_hitl=True):
+        """
+        에이전트 실행 메인 메서드
+        :param state: Director/Editor로부터 전달받은 상태 데이터 (dict)
+        :param enable_hitl: 사용자 검수 활성화 여부
+        """
+        print("--- [Node 7] Publisher Agent 작동 시작 ---")
+
+        # 1. 사용자 검수 (HITL)
+        if enable_hitl:
+            state = self._human_in_the_loop(state)
+
+        # 2. 이미지 최적화 처리
+        # state['images']에 담긴 모든 이미지를 순회하며 최적화
+        if 'images' in state:
+            for img_id, img_data in state['images'].items():
+                state['images'][img_id] = self._optimize_image(img_data)
+
+        # 3. HTML 조립 (Rendering)
+        try:
+            template = self.env.get_template(self.template_name)
+            html_output = template.render(data=state, images=state.get('images', {}))
+            
+            # 4. 결과 저장 (상태 객체에 추가)
+            state['final_html'] = html_output
+            
+            # 테스트를 위해 파일로도 저장 (선택 사항)
+            output_path = os.path.join(self.current_dir, "../../output/universal_result.html")
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(html_output)
+            
+            print(f"✅ 매거진 조립 완료: {output_path}")
+            return state
+
+        except Exception as e:
+            print(f"❌ 렌더링 에러: {e}")
+            return state
