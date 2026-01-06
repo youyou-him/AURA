@@ -6,22 +6,23 @@ from src.state import MagazineState
 from src.config import config
 
 def run_director(state: MagazineState) -> dict:
-    print("--- [5] Art Director: Generating SDUI Design Spec (Planner & Vision Integrated) ---")
+    print("--- [5] Art Director: Generating SDUI Design Spec ---")
     llm = config.get_llm()
     parser = JsonOutputParser()
     
-    # 1. Input Data Extraction (안전한 데이터 추출)
-    
-    # A. Planner Result (디자인 전략 & 타입)
+    # 1. Input Data Extraction
     planner_data = state.get("planner_result", {})
-    target_tone = planner_data.get("target_tone", "Elegant & Lyrical") # 예: Type A
-    
-    # B. Vision Result (색상 & 좌표)
     vision_data = state.get("vision_result", {})
-    # Vision이 분석한 주조색 (없으면 기본값)
+    
+    # [중요] Planner가 결정한 큰 틀 가져오기
+    # plan 딕셔너리 구조에 따라 접근 경로 주의 (planner_data['plan']['layout_mode'] 일 수도 있음)
+    plan_details = planner_data.get("plan", {}) 
+    target_tone = plan_details.get("selected_type", "Elegant Style")
+    layout_mode = plan_details.get("layout_mode", "Overlay") # "Overlay" or "Separated"
+    
+    # Vision Data
     extracted_colors = vision_data.get("dominant_colors", ["#000000", "#FFFFFF"]) 
-    # Vision이 찾은 여백 좌표 (없으면 중앙 배치 가정)
-    safe_areas = vision_data.get("safe_areas", "Center") 
+    safe_areas = vision_data.get("safe_areas", "Center")
 
     # ------------------------------------------------------------------
     # [프롬프트 설계 의도]
@@ -37,6 +38,7 @@ def run_director(state: MagazineState) -> dict:
         Your task is to create a **JSON Design Specification (SDUI Blueprint)** based on the Strategy and Visual Analysis.
         
         [Input Data]
+        - **Layout Mode**: {layout_mode}
         - **Design Strategy (Type)**: {target_tone}
         - **Extracted Colors (from Image)**: {extracted_colors}
         - **Safe Text Areas (from Image)**: {safe_areas}
@@ -111,27 +113,31 @@ def run_director(state: MagazineState) -> dict:
     )
     
     chain = prompt | llm | parser
-    
+        
     try:
         design_spec = chain.invoke({
             "target_tone": target_tone,
+            "layout_mode": layout_mode,
             "extracted_colors": str(extracted_colors),
             "safe_areas": str(safe_areas)
         })
+        
+        # [안전장치] LLM이 실수할 수 있으니 강제로 동기화
+        design_spec['is_overlay'] = (layout_mode.lower() == 'overlay')
+
     except Exception as e:
         print(f"❌ Director Error: {e}")
-        # Fail-Safe Default Design
+        # Fail-Safe
+        is_overlay = (layout_mode.lower() == 'overlay')
         design_spec = {
-            "layout_strategy": "hero_center",
-            "theme": {
-                "colors": {"primary": "#000000", "text_main": "#FFFFFF"},
-                "fonts": {"title": "Sans-Serif", "body": "Sans-Serif"}
-            },
-            "layout_config": {"text_alignment": "center", "overlay_opacity": "0.5"},
-            "components_style": {"headline": {"size": "text-5xl"}}
+            "is_overlay": is_overlay,
+            "layout_config": {"container_bg": "#FFFFFF", "text_alignment": "center"},
+            "theme": {"primary_color": "#000000"}
         }
 
+    print(f"🎨 디자인 스펙 생성 완료 (Mode: {layout_mode})")
+    
     return {
         "design_spec": design_spec,
-        "logs": [f"Director: Designed '{target_tone}' style with Smart Layout"]
+        "logs": [f"Director: Spec generated for {layout_mode}"]
     }

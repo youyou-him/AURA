@@ -37,7 +37,15 @@ def run_planner(state: MagazineState) -> dict:
     
     # Vision이 제안한 전략 (Overlay vs Separated) 가져오기
     strategy = vision_result.get("layout_strategy", {}).get("recommendation", "Overlay")
-    print(f"✅ Vision 제안 전략: {strategy}")
+    
+    # Mood (metadata 안에 있을 수 있음)
+    img_mood = vision_result.get("metadata", {}).get("mood", "Modern")
+    if not img_mood: img_mood = "Modern"
+        
+    # Safe Areas (Vision이 'safe_areas'로 줌)
+    safe_areas = vision_result.get("safe_areas", "Center")
+    
+    print(f"✅ Vision 제안: {strategy} / Mood: {img_mood} / Area: {safe_areas}")
 
     llm = config.get_llm()
     parser = JsonOutputParser()
@@ -96,6 +104,8 @@ def run_planner(state: MagazineState) -> dict:
             "safe_zone": vision_result.get("safe_zone")
         })
         
+        plan["layout_mode"] = strategy  # "Overlay" or "Separated"
+
         print(f"🧠 기획 확정: {plan.get('selected_type')} (전략: {strategy})")
         
         return {
