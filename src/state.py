@@ -4,7 +4,8 @@ import operator
 
 class MagazineState(TypedDict):
     # --- [1. 입력 데이터] ---
-    user_input: str
+    user_input: Dict[str, Any]
+    image_data: Optional[str]  # 처음엔 없을 수 있으니 Optional 필수!
     
     # [추가] Vision과 Publisher가 파일 경로를 참조할 때 사용
     image_path: Optional[str]  
@@ -24,6 +25,7 @@ class MagazineState(TypedDict):
     
     # --- [3. 생성 데이터 (병렬 구간)] ---
     manuscript: Optional[Dict[str, Any]]   
+    pages: Optional[List[Any]]
     design_spec: Optional[Dict[str, Any]]  
     
     # --- [4. 페이지네이션 & 퍼블리싱 (여기가 핵심!)] ---

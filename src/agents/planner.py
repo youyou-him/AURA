@@ -1,5 +1,3 @@
-# 파일 위치: src/agents/planner.py
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from src.state import MagazineState
@@ -8,19 +6,27 @@ from src.config import config
 def run_planner(state: MagazineState) -> dict:
     print("--- [Planner] 매거진 컨셉 기획 중... ---")
     
-    user_input = state.get("user_input")
-    user_script = state.get("user_script", {}) # 딕셔너리 (Dict)
+    # 1. user_input 데이터 안전하게 가져오기 (타입 체크 및 데이터 정제)
+    raw_input = state["user_input"]
     
-    # 제목 결정 로직: 
-    # 입력(user_input)이 있으면 그걸 제목으로 쓰고(String), 
-    # 없으면 user_script 딕셔너리에서 title을 꺼내 쓴다.
-    if user_input and isinstance(user_input, str):
-        final_title = user_input
-    else:
-        final_title = user_script.get("title", "Untitled Project")
+    # 기본값 설정
+    title_text = "Untitled"
+    request_text = ""
 
-    vision_result = state.get("vision_result") or {}
-    # 1. Vision 데이터 검증 및 기본값 설정
+    # (A) 입력이 딕셔너리인 경우 (Streamlit 등에서 구조화해서 보냄)
+    if isinstance(raw_input, dict):
+        title_text = raw_input.get("title", "Untitled")
+        # request 키가 없으면 전체를 문자열로 변환하거나 topic 사용
+        request_text = raw_input.get("request", raw_input.get("topic", str(raw_input)))
+        
+    # (B) 입력이 문자열인 경우 (단순 텍스트 입력)
+    elif isinstance(raw_input, str):
+        title_text = "Untitled" # 문자열만 왔을 땐 제목을 알 수 없음
+        request_text = raw_input
+        
+    # 2. Vision 데이터 검증 및 기본값 설정
+    vision_result = state.get("vision_result")
+    
     if not vision_result:
         print("❌ [Critical] Vision 데이터 누락. 기본값으로 진행합니다.")
         vision_result = {
@@ -36,7 +42,8 @@ def run_planner(state: MagazineState) -> dict:
     llm = config.get_llm()
     parser = JsonOutputParser()
 
-    # 2. 기획 프롬프트 (메뉴판 제공)
+    # 3. 기획 프롬프트 (메뉴판 제공)
+    # [수정] {title} 외에 {user_request}를 추가하여 문맥 파악 능력 향상
     prompt = ChatPromptTemplate.from_template(
         """
         You are the Editor-in-Chief of a high-end Fashion Magazine.
@@ -46,6 +53,7 @@ def run_planner(state: MagazineState) -> dict:
         - Vision Strategy: {strategy} (If 'Overlay', place text ON image. If 'Separated', place text BESIDE image.)
         - Image Mood: {img_mood}
         - Title: {title}
+        - User Request: {user_request}
         - Safe Zone: {safe_zone}
 
         [LAYOUT MENU - Choose ONE based on Strategy]
@@ -78,8 +86,11 @@ def run_planner(state: MagazineState) -> dict:
     chain = prompt | llm | parser
 
     try:
+        # [수정] 위에서 정제한 title_text와 request_text를 넘겨줍니다.
+        # 이제 .get() 에러가 발생하지 않습니다.
         plan = chain.invoke({
-            "title": final_title,
+            "title": title_text,
+            "user_request": request_text,
             "img_mood": vision_result.get("img_mood"),
             "strategy": strategy,
             "safe_zone": vision_result.get("safe_zone")

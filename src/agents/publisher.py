@@ -6,64 +6,27 @@ from PIL import Image
 from jinja2 import Environment, FileSystemLoader
 
 class PublisherAgent:
-    def __init__(self, template_path="templates"):
+    def __init__(self):
         """
         Publisher 에이전트 초기화
-        :param template_path: 템플릿 폴더명 (기본값: src/agents/templates)
         """
-        # 1. 경로 설정 (절대 경로로 변환하여 에러 방지)
-        self.current_dir = os.path.dirname(os.path.abspath(__file__))
-        self.template_dir = os.path.join(self.current_dir, template_path)
+        # 1. 경로 계산 (publisher.py 위치 기준)
+        self.current_dir = os.path.dirname(os.path.abspath(__file__)) # .../src/agents
         
-        # 2. 템플릿 폴더/파일 자동 생성 (안전장치)
-        if not os.path.exists(self.template_dir):
-            os.makedirs(self.template_dir, exist_ok=True)
-            print(f"📂 [Publisher] 템플릿 폴더 생성: {self.template_dir}")
+        # 2. 프로젝트 루트로 이동 (src/agents -> src -> ProjectRoot)
+        self.project_root = os.path.dirname(os.path.dirname(self.current_dir))
         
+        # 3. 템플릿 '폴더' 경로 설정 (파일명 제외!)
+        # 예: .../Final-Project/templates
+        self.template_dir = os.path.join(self.project_root, "templates")
+        
+        # 4. 템플릿 파일 이름 설정
         self.template_name = 'magazine_layout.html'
-        template_file_path = os.path.join(self.template_dir, self.template_name)
         
-        # 기본 템플릿이 없으면 생성 (렌더링 에러 방지용)
-        if not os.path.exists(template_file_path):
-            with open(template_file_path, "w", encoding="utf-8") as f:
-                f.write("""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>AI Magazine</title>
-    <style>
-        body { 
-            background-color: {{ data.design_spec.theme.colors.primary if data.design_spec else '#ffffff' }}; 
-            font-family: sans-serif; padding: 20px; 
-        }
-        .content { background: rgba(255,255,255,0.9); padding: 30px; border-radius: 10px; max-width: 800px; margin: 0 auto; }
-        img { max-width: 100%; height: auto; border-radius: 5px; margin-bottom: 20px; }
-    </style>
-</head>
-<body>
-    <div class="content">
-        {% if images and images.main_img %}
-        <img src="{{ images.main_img }}" alt="Hero Image">
-        {% endif %}
-
-        {% if data.content and data.content.blocks %}
-            <h1>{{ data.content.blocks[0].headline }}</h1>
-            <h3>{{ data.content.blocks[0].subhead }}</h3>
-            <p>{{ data.content.blocks[0].body }}</p>
-        {% else %}
-            <h1>No Content Generated</h1>
-        {% endif %}
-    </div>
-    <div style="text-align:center; margin-top:20px; opacity:0.5; font-size:12px;">
-        Designed by AI Director ({{ data.design_spec.theme.mood if data.design_spec else 'Default' }})
-    </div>
-</body>
-</html>
-                """)
-            print(f"📄 [Publisher] 기본 템플릿 생성 완료: {template_file_path}")
-
-        # Jinja2 환경 설정
+        # 디버깅용 출력
+        print(f"📂 Publisher Template Dir: {self.template_dir}")
+        
+        # Jinja2 환경 설정 (폴더 경로만 전달)
         self.env = Environment(loader=FileSystemLoader(self.template_dir))
 
     def _optimize_image(self, image_data, max_width=1024):
@@ -96,8 +59,8 @@ class PublisherAgent:
             # 템플릿 호환성을 위해 Base64 문자열 반환
             return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode('utf-8')
         except Exception as e:
-            print(f"⚠️ 이미지 최적화 실패: {e}")
-            return image_data 
+            # print(f"⚠️ 이미지 최적화 실패: {e}") # 로그가 너무 많으면 주석 처리
+            return image_data # 실패 시 원본 반환
 
     def _human_in_the_loop(self, state):
         """
@@ -106,9 +69,9 @@ class PublisherAgent:
         print("\n" + "="*50)
         print("🔍 [Publisher HITL] 최종 조립 전 검수를 시작합니다.")
         
-        content = state.get('content', {})
-        if 'blocks' in content and len(content['blocks']) > 0:
-            current_headline = content['blocks'][0].get('headline', 'N/A')
+        # 첫 번째 블록의 헤드라인을 검수 대상으로 지정
+        if 'blocks' in state.get('content', {}) and len(state['content']['blocks']) > 0:
+            current_headline = state['content']['blocks'][0].get('headline', 'N/A')
             print(f"현재 표지 문구: {current_headline}")
             
             user_input = input("👉 수정할 문구를 입력하세요 (엔터 시 유지): ").strip()
@@ -119,7 +82,7 @@ class PublisherAgent:
         print("="*50 + "\n")
         return state
 
-    def run(self, state, enable_hitl=False):
+    def run_process(self, state, enable_hitl=True):
         """
         에이전트 실행 메인 메서드
         """
@@ -129,46 +92,23 @@ class PublisherAgent:
         if enable_hitl:
             state = self._human_in_the_loop(state)
 
-        # 2. 이미지 최적화 처리 (HTML에 임베딩하기 위해)
-        # state['images'] 딕셔너리가 있다면 처리
-        if state.get('images'):
-            for key, val in state['images'].items():
-                # 파일 경로인 경우 최적화 후 Base64로 변환
-                if val and os.path.exists(val):
-                    state['images'][key] = self._optimize_image(val)
+        # 2. 이미지 최적화 처리
+        if 'images' in state:
+            for img_id, img_data in state['images'].items():
+                state['images'][img_id] = self._optimize_image(img_data)
 
         # 3. HTML 조립 (Rendering)
         try:
-            # 🌟 [NEW] Planner의 의도에 따라 템플릿 교체!
-            planner_intent = state.get("intent", "TYPE_FASHION_COVER")
-            
-            if "SPLIT" in planner_intent or "PRODUCT" in planner_intent:
-                # 분할 레이아웃 (기사형)
-                template_name = 'layout_split.html'
-            else:
-                # 덮어쓰기 레이아웃 (표지형) - 기본값
-                template_name = 'layout_overlay.html' # 아까 만든 파일 이름도 이걸로 변경 추천!
-
-            print(f"🖨️ Publisher: '{planner_intent}'에 맞춰 '{template_name}'을 사용합니다.")
-            
-            # 템플릿 로드
-            template = self.env.get_template(template_name)
-            
-            html_output = template.render(
-                data=state, 
-                images=state.get('images', {})
-            )
+            # 여기서 템플릿 파일 이름을 사용합니다.
+            template = self.env.get_template(self.template_name)
+            html_output = template.render(data=state, images=state.get('images', {}))
             
             # 4. 결과 저장
             state['final_html'] = html_output
             
-            # 프로젝트 루트의 output 폴더 계산 (src/agents/publisher.py -> src/agents -> src -> root)
-            root_dir = os.path.abspath(os.path.join(self.current_dir, "..", ".."))
-            output_dir = os.path.join(root_dir, "output")
-            os.makedirs(output_dir, exist_ok=True)
-            
-            output_path = os.path.join(output_dir, "final_magazine.html")
-            
+            # 테스트를 위해 파일로도 저장 (선택 사항)
+            output_path = os.path.join(self.project_root, "output", "universal_result.html")
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(html_output)
             
@@ -176,17 +116,16 @@ class PublisherAgent:
             return state
 
         except Exception as e:
-            print(f"❌ Publisher 렌더링 에러: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ 렌더링 에러: {e}")
+            # 에러 발생 시에도 빈 문자열이라도 반환하여 다음 단계 진행
+            state['final_html'] = f"<h3>Error: {e}</h3>"
             return state
 
 # ---------------------------------------------------------
-# [Wrapper Function] Main.py에서 호출할 함수
+# [중요] 외부 파일(main.py)에서 import 할 수 있도록 함수 노출
 # ---------------------------------------------------------
-def run_publisher(state: dict) -> dict:
-    # 클래스 인스턴스 생성 (여기서 __init__이 실행됨)
-    agent = PublisherAgent(template_path="templates")
-    
-    # 자동화 모드이므로 HITL은 끔 (필요하면 True로 변경)
-    return agent.run(state, enable_hitl=False)
+publisher_agent = PublisherAgent()
+
+def run_publisher(state):
+    # Streamlit(app.py) 실행 시 터미널 입력이 멈추는 것을 방지하기 위해 HITL은 끕니다.
+    return publisher_agent.run_process(state, enable_hitl=False)

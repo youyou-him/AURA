@@ -21,7 +21,17 @@ def run_paginator_node(state: MagazineState) -> dict:
     print("--- [Step 4.5] Paginator: Organizing Articles ---")
     
     manuscript = state.get("manuscript", {})
-    articles = [manuscript] if isinstance(manuscript, dict) else manuscript
+    
+    # [방어 코드] 원고가 없으면 빈 리스트 처리
+    if not manuscript:
+        print("⚠️ [Paginator] 원고(Manuscript)가 없습니다. 빈 페이지를 반환합니다.")
+        return {"pages": []}
+
+    # 리스트 변환 (안전장치)
+    if isinstance(manuscript, dict):
+        articles = [manuscript]
+    else:
+        articles = manuscript
 
     # 도구 실행
     pages = organize_articles_into_pages(articles)
