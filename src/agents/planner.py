@@ -99,7 +99,8 @@ def run_planner(state: MagazineState) -> dict:
         print(f"🧠 기획 확정: {plan.get('selected_type')} (전략: {strategy})")
         
         return {
-            "plan": plan,
+            "planner_result": plan,
+            "intent": plan.get("selected_type"),
             "vision_result": vision_result,
             "logs": [f"Planner: {plan.get('selected_type')} 선정"]
         }
