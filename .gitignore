@@ -208,6 +208,7 @@ __marimo__/
 
 # generated outputs
 output/universal_result.html
+output/final_magazine.html
 output/*
 # Windows Zone.Identifier files
 *:Zone.Identifier
