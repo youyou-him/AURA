@@ -60,48 +60,41 @@ def run_vision(state):
         # 프롬프트 구성
         relevant_text = user_request or title
         prompt = f"""
-            You are the 'Chief Art Director'. 
-            Request: "{relevant_text}"
+        You are the 'Chief Art Director'. 
+        Request: "{relevant_text}"
 
-            **[TASK: Step-by-Step Layout Decision]**
-            Follow this exact order of thinking to decide "Overlay" vs "Separated".
+        **[TASK: Step-by-Step Layout Decision]**
+        Follow this exact order of thinking to decide "Overlay" vs "Separated".
 
-            **STEP 1: Identify the 'HERO SUBJECT' (The Star)**
-            - Find the Main Subject (Person, Watch, Bag).
-            - **IGNORE** the background cleanliness for a moment. Focus ONLY on the Hero.
+        1. Identify the 'HERO SUBJECT'.
+        2. Analyze Hero's Dominance (Central Portrait/Macro shot/Size > 50%? -> 'Separated').
+        3. Evaluate Background (Clean Space/Uniform Prop? -> 'Overlay').
 
-            **STEP 2: Analyze Hero's Dominance (The FATAL Check)**
-            - **Is it a Person?** If yes, does the person occupy the **Center** of the image? -> If YES, STOP. Choose **'SEPARATED'**. (Never overlay text on a central portrait).
-            - **Is it a Product?** Is it a "Macro Shot" (zoomed in extremely close)? -> If YES, STOP. Choose **'SEPARATED'**.
-            - **Size Check:** Does the Hero Subject take up more than 50% of the image width/height? -> If YES, mostly **'SEPARATED'**.
+        **[OUTPUT FORMAT: JSON ONLY]**
+        Generate a JSON object for the 'vision_analysis' key with the following 4 keys.
+        Strictly follow the structure below to pass the Data Integrity Check.
 
-            **STEP 3: Evaluate Background/Props (Only if Step 2 didn't stop you)**
-            - Now look at the background.
-            - **Case A (Prop as Canvas):** Is the Hero small, sitting on a huge uniform object (like a watch on a big white shell)? -> Choose **'OVERLAY'**.
-            - **Case B (Clean Space):** Is the Hero off-center (Left/Right), leaving a huge empty sky/wall? -> Choose **'OVERLAY'**.
+        {{
+            "thought_process": [
+                "Step 1: Identify the main subject...",
+                "Step 2: Check dominance and size...",
+                "Step 3: Analyze background and safe area...",
+                "Final Decision: 'Overlay' or 'Separated' based on logic."
+            ],
+            "layout_strategy": {{
+                "recommendation": "Overlay" or "Separated",
+                "reason": "Clear and detailed visual rationale for the choice"
+            }},
+            "metadata": {{
+                "mood": "Visual mood (e.g., Luxury, Bright, Moody)",
+                "dominant_colors": ["#Hex1", "#Hex2", "#Hex3"],
+                "lighting": "Description of lighting (e.g., Soft studio light)"
+            }},
+            "safe_areas": [[ymin, xmin, ymax, xmax]] 
+        }}
 
-            **[Decision Logic Summary]**
-            1. **Portrait/Central Human** = **SEPARATED** (Priority 1)
-            2. **Zoomed-in Product** = **SEPARATED** (Priority 2)
-            3. **Small Hero + Big Uniform Prop** = **OVERLAY** (Priority 3)
-            4. **Small Hero + Clean Sky/Wall** = **OVERLAY** (Priority 4)
-
-            **[JSON Data Structure]**
-            1. thought_process: [Step-by-step reasoning based on the tasks above]
-            2. layout_strategy:
-                - recommendation: "Overlay" or "Separated"
-                - reason: "Detailed reason for the choice"
-            3. metadata: 
-                - mood: "Visual mood keywords"
-                - dominant_colors: ["#Hex1", "#Hex2", "#Hex3"]
-                - lighting: "Lighting description"
-                - dominant_position: "Left", "Right", or "Center"
-                - design_guide: {{ "text_contrast": "Dark/Light", "font_recommendation": "Serif/Sans-serif" }}
-                - composition_analysis: {{ "visual_weight": "...", "gaze_direction": "..." }}
-                - texture_context: {{ "dominant_texture": "...", "seasonal_vibe": "..." }}
-            4. safe_areas: [[ymin, xmin, ymax, xmax], ...] (Return [] if 'Separated')
-
-            RETURN ONLY RAW JSON. NO MARKDOWN.
+        - If recommendation is 'Separated', 'safe_areas' must be [].
+        - RETURN ONLY RAW JSON. NO MARKDOWN.
         """
 
         try:
