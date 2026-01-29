@@ -48,7 +48,7 @@
 | 생성 속도 | 42초 | 25초 | **40%↑** |
 
 #### 4. 데모
-- [YouTube 데모 영상]([링크](https://www.youtube.com/watch?v=d1APEtY6igY))
+- [YouTube 데모 영상](https://www.youtube.com/watch?v=d1APEtY6igY)
 - [배포 환경 체험하기](http://52.79.246.241:8000/)
   
 ---
